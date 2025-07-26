@@ -1,5 +1,5 @@
 export interface message{
-    id:string,
+    messageId?:string
     content:string,
     conversationId:string,
     type:"user"| "LLM",
@@ -7,9 +7,8 @@ export interface message{
 }
 
 export interface conversation{
-    id:string,
     userId:string,
     messageArray?:message[],
     startedAt:string,
-    endedAt:string,
+    endedAt:string | null,
 };
