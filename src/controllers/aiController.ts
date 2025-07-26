@@ -2,7 +2,7 @@ import type { Request,Response } from "express";
 import { checkEmail } from "../helpers/emailChecket";
 import { collections } from "../db/constants";
 import { connectTodb } from "../db/db";
-import type { Db, ObjectId } from "mongodb";
+import { ObjectId, type Db } from "mongodb";
 import type { conversation,message } from "../model/conversation";
 import { processMarketplaceQuery } from "../helpers/aiHelper";
 
@@ -44,6 +44,7 @@ export const chatHandler=async(req:Request,res:Response)=>{
 
         const {userId,message,conversationId}=req.body;
 
+        conversationId.toString();
         if(!userId || !message) throw new Error("Missing property");
 
         const createdAt=new Date().toISOString()
@@ -92,9 +93,40 @@ export const chatHandler=async(req:Request,res:Response)=>{
         return res.status(200).send(result.botMessage)
         }
 
+        const conversation=await db.collection(collections.conversations).findOne({
+            _id:new ObjectId(conversationId),
+        })
 
+        let llmResponse=await processMarketplaceQuery(message,db,checkEmail);
 
+        let llmMessagePayload:message={
+            createdAt:createdAt,
+            content:llmResponse.botMessage,
+            conversationId:conversation?._id.toString()!,
+            type:'LLM'
+        }
 
+        let userMessagePayload:message={
+            createdAt:createdAt,
+            content:message,
+            conversationId:conversation?._id.toString()!,
+            type:'user'
+        }
+
+        const [usermessage,llmMessage]= await Promise.all([
+              createMessage(userMessagePayload),
+              createMessage(llmMessagePayload)
+        ])
+
+        await Promise.all([
+            pushMessageToConversation(conversation?._id!,usermessage.insertedId,userMessagePayload,createdAt),
+            pushMessageToConversation(conversation?._id!,llmMessage.insertedId,llmMessagePayload,createdAt)
+        ])
+
+        return res.status(200).json({results:{
+            botResponse:llmResponse.botMessage,
+            queryResults:llmResponse.queryResults 
+        }})
 
     }
     catch(err){
