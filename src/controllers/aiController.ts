@@ -2,13 +2,41 @@ import type { Request,Response } from "express";
 import { checkEmail } from "../helpers/emailChecket";
 import { collections } from "../db/constants";
 import { connectTodb } from "../db/db";
-import type { Db } from "mongodb";
+import type { Db, ObjectId } from "mongodb";
 import type { conversation,message } from "../model/conversation";
+import { processMarketplaceQuery } from "../helpers/aiHelper";
 
 let db:Db | null;
 
 db=await connectTodb();
 
+
+async function createMessage(message:message) {
+    const newMessage= await db!.collection(collections.messages).insertOne(message);
+    return newMessage;
+}
+
+async function pushMessageToConversation(conversationId:ObjectId,messageId:ObjectId,message:message,createdAt:string) {
+   return await db!.collection<conversation>(collections.conversations).updateOne({
+                _id:conversationId
+            },
+            {
+                $push:{
+                    messageArray:{
+                        $each:[{
+                            messageId:messageId.toString(),
+                            content:message.content,
+                            conversationId: conversationId.toString(),
+                            createdAt:createdAt,
+                            type:'user'
+                        }],
+                        $position:0
+                    }
+                }
+            }
+        )
+
+}
 
 export const chatHandler=async(req:Request,res:Response)=>{
 
@@ -19,6 +47,7 @@ export const chatHandler=async(req:Request,res:Response)=>{
         if(!userId || !message) throw new Error("Missing property");
 
         const createdAt=new Date().toISOString()
+
 
         if(!conversationId){
             let convoPayload:conversation={
@@ -37,29 +66,33 @@ export const chatHandler=async(req:Request,res:Response)=>{
                 createdAt:createdAt
             }
 
-            const newMessage=await db.collection(collections.messages).insertOne(messagePayload)!;
+            const newMessage=await createMessage(messagePayload);
 
-            await db.collection<conversation>(collections.conversations).updateOne({
-                _id:newConversation.insertedId
-            },
-            {
-                $push:{
-                    messageArray:{
-                        $each:[{
-                            messageId:newMessage.insertedId.toString(),
-                            content:message,
-                            conversationId: newConversation.insertedId.toString(),
-                            createdAt:createdAt,
-                            type:'user'
-                        }],
-                        $position:0
-                    }
-                }
+            await pushMessageToConversation(newConversation.insertedId,newMessage.insertedId,messagePayload,createdAt);
+
+           
+            let result=await processMarketplaceQuery(message,db,checkEmail);
+
+            messagePayload={
+                content:result.botMessage,
+                conversationId:newConversation.insertedId.toString(),
+                type:'LLM',
+                createdAt:createdAt
             }
-        )
+
+            const llmMessage=await createMessage(messagePayload)
+
+            await pushMessageToConversation(newConversation.insertedId,llmMessage.insertedId,result.botMessage,createdAt)
+
+            if(result.needsEmail){
+                return res.status(200).send(result.botMessage)
+            }
+
+
+        return res.status(200).send(result.botMessage)
         }
 
-        
+
 
 
 
