@@ -1,0 +1,19 @@
+{
+  "name": "marketplace_chatbot",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@types/mongodb": "^4.0.7",
+    "@types/node": "^24.1.0",
+    "csv-parser": "^3.2.0",
+    "express": "^5.1.0",
+    "mongodb": "^6.18.0"
+  }
+}
